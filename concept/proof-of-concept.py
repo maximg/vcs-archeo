@@ -6,7 +6,7 @@ import pydot
 graph = pydot.Dot(graph_type='graph')
 
 # Create a connection to the database.
-conn = sqlite3.connect('..\\svnplot\\svnplot.sqlite')
+conn = sqlite3.connect('..\\data\\svnplot\\svnplot.sqlite')
 
 c1 = conn.cursor()
 
