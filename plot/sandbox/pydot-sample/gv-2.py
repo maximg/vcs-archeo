@@ -44,6 +44,6 @@ graph.add_edge(pydot.Edge(node_c, node_d))
 graph.add_edge(pydot.Edge(node_d, node_a, label="and back we go again", labelfontcolor="#009933", fontsize="10.0", color="blue"))
 
 # and we are done
-graph.write_png('example2_graph.png')
+graph.write_png('example2_graph.png', prog='neato')
 
 # this is too good to be true!
