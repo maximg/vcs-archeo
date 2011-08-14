@@ -20,10 +20,22 @@ else:
 	
 conn = sqlite3.connect('..\\data\\' + proj + '\\' + proj + '.sqlite')
 
-def getMinMax():
+def getMinMaxChanges():
 	c = conn.cursor()
 	if proj == 'hadoop-common':
 		rows = c.execute('SELECT min(cnt), max(cnt)  as max FROM SvnNodes')
+		for row in rows:
+			min = row[0]
+			max = row[1]
+			c.close()
+			return (min,max)
+	c.close()
+	return (1,100)
+
+def getMinMaxLinkWeight():
+	c = conn.cursor()
+	if proj == 'hadoop-common':
+		rows = c.execute('SELECT min(cnt), max(cnt)  as max FROM SvnLinks')
 		for row in rows:
 			min = row[0]
 			max = row[1]
@@ -57,7 +69,7 @@ def getColor(cnt, min, max):
 		color = "grey"
 	return color
 
-(min,max) = getMinMax()
+(min,max) = getMinMaxChanges()
 
 graph = pydot.Dot(graph_type='graph', overlap='scale')
 
@@ -73,12 +85,19 @@ and p1 < p2
 group by p1,p2
 order by  p1, p2, weight''')
 
+def getLength(weight):
+	if weight > 1:
+		return 0.5
+	return 1
+	
+def getStyle(weight):
+	if weight > 1:
+		return 'bold'
+	return 'invis'
+	
 for link in links:
 	if link[0] < maxNodes and link[1] < maxNodes:
-		if link[2] > 1:
-			graph.add_edge(pydot.Edge(link[0],link[1],style='bold',len=0.5))
-		else:
-			graph.add_edge(pydot.Edge(link[0],link[1],len=1))
+		graph.add_edge( pydot.Edge( link[0], link[1], len=getLength(link[2]), style=getStyle(link[2]) ) )
 
 graph.write(proj + '.dot')
 graph.write_png(proj + '.png', prog='neato')
