@@ -2,36 +2,69 @@
 import sqlite3
 import pprint
 import pydot
+import sys
 
-graph = pydot.Dot(graph_type='graph')
+maxNodes = 300
 
-# Create a connection to the database.
-conn = sqlite3.connect('..\\data\\svnplot\\svnplot.sqlite')
+if len(sys.argv) > 1:
+	proj = sys.argv[1]
+else:
+	proj = 'svnplot'
 
-c1 = conn.cursor()
+#proj = 'hadoop-common'
+#proj = 'squirrelmail'
+#proj = 'squirrel-sql'
+#proj = 'notepad-plus'
+#proj = 'zero-install'
+#proj = 'codeswarm'
+	
+conn = sqlite3.connect('..\\data\\' + proj + '\\' + proj + '.sqlite')
 
-nodes = c1.execute('''
-SELECT pths.path, changedpathid, count(revno) as cnt FROM SVNLogDetail dt, SVNPaths pths
-where dt.changedpathid = pths.id
-group by changedpathid  
-order by cnt desc''')
+def getMinMax():
+	c = conn.cursor()
+	if proj == 'hadoop-common':
+		rows = c.execute('SELECT min(cnt), max(cnt)  as max FROM SvnNodes')
+		for row in rows:
+			min = row[0]
+			max = row[1]
+			c.close()
+			return (min,max)
+	c.close()
+	return (1,100)
 
-for node in nodes:
+def getNodes():
+	c1 = conn.cursor()
+	nodes = []
+	rows = c1.execute('''
+	SELECT pths.path, changedpathid, count(revno) as cnt FROM SVNLogDetail dt, SVNPaths pths
+	where dt.changedpathid = pths.id
+	group by changedpathid  
+	order by cnt desc''')
+	for row in rows:
+		if row[1] < maxNodes:
+			new_node = (row[1],row[2])
+			nodes.append(new_node)
+	c1.close()
+	return nodes
+
+def getColor(cnt, min, max):
 	#pprint.pprint(row)
-	if node[2] > 20:
+	if cnt > max/5:
 		color = "red"
-	elif node[2] > 10:
+	elif cnt > max/10:
 		color = "yellow"
 	else:
 		color = "grey"
-	graph.add_node(pydot.Node(node[1], style="filled", fillcolor=color))
+	return color
 
-c1.close()
+(min,max) = getMinMax()
 
-# Create a cursor object to do the interacting.
+graph = pydot.Dot(graph_type='graph', overlap='scale')
+
+for node in getNodes():
+	graph.add_node(pydot.Node(node[0], style="filled", fillcolor=getColor(node[1], min, max)))
+
 c = conn.cursor()
-
-# Grab the links
 links = c.execute('''
 SELECT t1.changedpathid p1, t2.changedpathid p2, count(t1.revno) weight
 from SVNLogDetail t1, SVNLogDetail t2
@@ -40,15 +73,15 @@ and p1 < p2
 group by p1,p2
 order by  p1, p2, weight''')
 
-#pprint(new_rows)	
-# Iterate through the new list of tuples and put them in the database.
 for link in links:
-	#pprint.pprint(row)
-	graph.add_edge(pydot.Edge(link[0],link[1]))
+	if link[0] < maxNodes and link[1] < maxNodes:
+		if link[2] > 1:
+			graph.add_edge(pydot.Edge(link[0],link[1],style='bold',len=0.5))
+		else:
+			graph.add_edge(pydot.Edge(link[0],link[1],len=1))
 
-graph.write_png('svnhist.png', prog='neato')
+graph.write(proj + '.dot')
+graph.write_png(proj + '.png', prog='neato')
 
-# Commit the changes and close everything.
-#conn.commit()
 c.close()
 conn.close()
