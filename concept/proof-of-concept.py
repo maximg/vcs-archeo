@@ -4,7 +4,9 @@ import pprint
 import pydot
 import sys
 
+nodes = {}
 maxNodes = 300
+
 
 if len(sys.argv) > 1:
 	proj = sys.argv[1]
@@ -32,32 +34,17 @@ def getMinMaxChanges():
 	c.close()
 	return (1,100)
 
-def getMinMaxLinkWeight():
-	c = conn.cursor()
-	if proj == 'hadoop-common':
-		rows = c.execute('SELECT min(cnt), max(cnt)  as max FROM SvnLinks')
-		for row in rows:
-			min = row[0]
-			max = row[1]
-			c.close()
-			return (min,max)
-	c.close()
-	return (1,100)
-
 def getNodes():
 	c1 = conn.cursor()
-	nodes = []
 	rows = c1.execute('''
-	SELECT pths.path, changedpathid, count(revno) as cnt FROM SVNLogDetail dt, SVNPaths pths
-	where dt.changedpathid = pths.id
-	group by changedpathid  
-	order by cnt desc''')
-	for row in rows:
-		if row[1] < maxNodes:
-			new_node = (row[1],row[2])
-			nodes.append(new_node)
+	select nd.id, nd.path, nd.rank, cp.fromId parent from SVNNodesVw nd 
+	left outer join SVNCopiesVw cp on nd.id = cp.id
+	order by nd.id''')
+	for node in rows:
+		id = node[0]
+		if id < maxNodes:
+			nodes[id] = node
 	c1.close()
-	return nodes
 
 def getColor(cnt, min, max):
 	#pprint.pprint(row)
@@ -73,8 +60,39 @@ def getColor(cnt, min, max):
 
 graph = pydot.Dot(graph_type='graph', overlap='scale')
 
-for node in getNodes():
-	graph.add_node(pydot.Node(node[0], style="filled", fillcolor=getColor(node[1], min, max)))
+remap = {}
+
+getNodes()
+new_nodes = {}
+
+for id in nodes:
+	(x, path, rank, parent) = nodes[id]
+	# check for renames
+	if not parent is None:
+		pprint.pprint(nodes[parent])
+		(x1, path1, prank, parent1) = nodes[parent]
+		rank = rank + prank
+		remap[parent] = id
+		del new_nodes[parent]
+	new_nodes[id] = (id, path, rank, parent)
+	#pprint.pprint(new_nodes[id])
+
+for id in new_nodes:
+	(x, path, rank, parent) = new_nodes[id]
+	if rank > max/10:
+		label = path.split('/')[-1]
+	else:
+		label = id
+	label = path.split('/')[-1]
+	color = getColor(rank, min, max)
+	shape = "ellipse"
+	if label == '':
+		# it is a folder
+		color = "green"
+		label = path.split('/')[-2]
+		shape = "box"
+	label = label + " (" + str(id) + ")"
+	graph.add_node(pydot.Node(id, label=label, style="filled", fillcolor=color, shape=shape, URL=path))
 
 c = conn.cursor()
 links = c.execute('''
@@ -85,8 +103,8 @@ and p1 < p2
 group by p1,p2
 order by  p1, p2, weight''')
 
-def getLength(weight):
-	if weight > 1:
+def getLength(rank):
+	if rank > 1:
 		return 0.5
 	return 1
 	
@@ -95,12 +113,21 @@ def getStyle(weight):
 		return 'bold'
 	return 'invis'
 	
-for link in links:
-	if link[0] < maxNodes and link[1] < maxNodes:
-		graph.add_edge( pydot.Edge( link[0], link[1], len=getLength(link[2]), style=getStyle(link[2]) ) )
+def getNode(id):
+	while id in remap:
+		id = remap[id]
+	return id
+	
+for (id1, id2, linkRank) in links:
+	if id1 < maxNodes and id2 < maxNodes:
+		#graph.add_edge( pydot.Edge( node1, node2, len=getLength(linkRank), style=getStyle(linkRank) ) )
+		node1 = getNode(id1)
+		node2 = getNode(id2)
+		graph.add_edge( pydot.Edge( node1, node2, style=getStyle(linkRank), len=0.1 ) )
 
 graph.write(proj + '.dot')
 graph.write_png(proj + '.png', prog='neato')
+graph.write_cmapx(proj + '.map', prog='neato')
 
 c.close()
 conn.close()
